@@ -57,3 +57,11 @@ def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT):
     print(f"Classes: {full_dataset.classes}")
     print(f"Train: {train_size}, Val: {val_size}")
     return train_loader, val_loader, full_dataset.classes
+
+def test_loader(batch_size= BATCH_SIZE):
+    """Load ADNI test data"""
+    test_dir = os.path.join(ADNI_DATA_PATH, "test")
+    test_dataset = datasets.ImageFolder(test_dir, transform=get_transforms(train=False))
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    print(f"test samples: {len(test_dataset)}")
+    return test_loader
