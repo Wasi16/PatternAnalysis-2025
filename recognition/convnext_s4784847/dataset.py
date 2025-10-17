@@ -20,9 +20,11 @@ BATCH_SIZE = 16
 VAL_SPLIT = 0.2 
 SEED = 42 
 
-MEAN, STD = mean_std_calc(os.path.join(ADNI_DATA_PATH, "train"), grayscale= True)
+def load_values():
+    mean, std = mean_std_calc(os.path.join(ADNI_DATA_PATH, "train"), grayscale= True)
+    return mean,std
 
-def get_transforms(train=True):
+def get_transforms(train=True, std = 0.5, mean = 0.5):
     """Return transform pipeline for train/test."""
     if train:
         return transforms.Compose([
@@ -31,28 +33,29 @@ def get_transforms(train=True):
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
-            transforms.Normalize(MEAN, STD)
+            transforms.Normalize(mean, std)
         ])
     else:
         return transforms.Compose([
             transforms.Resize(IMAGE_SIZE),
             transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
-            transforms.Normalize(MEAN, STD)
+            transforms.Normalize(mean,std)
         ])
     
 def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT):
     """Load ADNI training data and split into train/validation sets."""
     torch.manual_seed(SEED)
     train_dir = os.path.join(ADNI_DATA_PATH, "train")
+    mean,std = load_values()
 
-    full_dataset = datasets.ImageFolder(train_dir, transform=get_transforms(train=True))
+    full_dataset = datasets.ImageFolder(train_dir, transform=get_transforms(train=True, std=std, mean=mean))
     val_size = int(len(full_dataset) * val_split)
     train_size = len(full_dataset) - val_size
 
     train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
     print(f"Classes: {full_dataset.classes}")
     print(f"Train: {train_size}, Val: {val_size}")
@@ -62,6 +65,6 @@ def test_loader(batch_size= BATCH_SIZE):
     """Load ADNI test data"""
     test_dir = os.path.join(ADNI_DATA_PATH, "test")
     test_dataset = datasets.ImageFolder(test_dir, transform=get_transforms(train=False))
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     print(f"test samples: {len(test_dataset)}")
     return test_loader
