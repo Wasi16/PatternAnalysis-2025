@@ -21,3 +21,22 @@ VAL_SPLIT = 0.2
 SEED = 42 
 
 MEAN, STD = mean_std_calc(os.path.join(ADNI_DATA_PATH, "train"), grayscale= True)
+
+def get_transforms(train=True):
+    """Return transform pipeline for train/test."""
+    if train:
+        return transforms.Compose([
+            transforms.Resize(IMAGE_SIZE),
+            transforms.RandAugment(num_ops=2),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor(),
+            transforms.Normalize(MEAN, STD)
+        ])
+    else:
+        return transforms.Compose([
+            transforms.Resize(IMAGE_SIZE),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor(),
+            transforms.Normalize(MEAN, STD)
+        ])
