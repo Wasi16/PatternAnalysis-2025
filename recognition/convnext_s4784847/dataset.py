@@ -40,3 +40,20 @@ def get_transforms(train=True):
             transforms.ToTensor(),
             transforms.Normalize(MEAN, STD)
         ])
+    
+def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT):
+    """Load ADNI training data and split into train/validation sets."""
+    torch.manual_seed(SEED)
+    train_dir = os.path.join(ADNI_DATA_PATH, "train")
+
+    full_dataset = datasets.ImageFolder(train_dir, transform=get_transforms(train=True))
+    val_size = int(len(full_dataset) * val_split)
+    train_size = len(full_dataset) - val_size
+
+    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+
+    print(f"Classes: {full_dataset.classes}")
+    print(f"Train: {train_size}, Val: {val_size}")
+    return train_loader, val_loader, full_dataset.classes
