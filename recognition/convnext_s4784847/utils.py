@@ -5,7 +5,7 @@ utils.py
 General utility functions for preprocessing and analysis.
 
 Includes: 
-- mean_std_compute(): Calculate the mean and standard deviation of ADNI image dataset.
+- mean_std_calc(): Calculate the mean and standard deviation of ADNI image dataset.
 
 """
 
