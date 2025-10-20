@@ -14,12 +14,17 @@ class ConvNeXtBlock(nn.Module):
     def __init__(self, dimentions):
         super().__init__()
 
+        # Depthwise Convolution
         self.dwconv = nn.Conv2d(dimentions, dimentions, kernel_size=7, padding=3, groups=dimentions)
 
+        # Layer Normalisation
         self.norm = nn.LayerNorm(dimentions,eps=1e-6)
 
+        # First Pointwise Convolution(Expansion)
         self.pwconv1 = nn.Linear(dimentions,  4*dimentions)
+        # Activation Function
         self.act = nn.GELU
+        # Second Pointwise Convolution(Projection)
         self.pwconv2 = nn.Linear(4* dimentions, dimentions)
 
     def forward(self,x):
@@ -40,7 +45,6 @@ class ConvNeXtBlock(nn.Module):
         x = residual + x
 
         return x
-
 
 class DownsampleLayer():
 
