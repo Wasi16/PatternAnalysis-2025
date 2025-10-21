@@ -124,5 +124,22 @@ class ConvNeXt_T():
             nn.init.constant_(m.weight, 1.0)
             nn.init.constant_(m.bias, 0.0)
 
-    def forward(self,x):
+    def forward(self, x):
+        # Stem: patchify input (reduce resolution 4x)
+        x = self.stem[0](x)
+        x = x.permute(0, 2, 3, 1)
+        x = self.stem[1](x)
+        x = x.permute(0, 3, 1, 2)
+
+        # Sequentially pass through stages
+        for stage in self.stages:
+            x = stage(x)
+
+        # Global average pooling
+        x = x.mean([-2, -1])  # Average over H and W
+
+        # Final normalization and classification head
+        x = self.norm(x)
+        x = self.head(x)
+        
         return x
