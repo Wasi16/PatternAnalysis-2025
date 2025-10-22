@@ -13,6 +13,7 @@ from tqdm import tqdm # progress bars
 from modules import ConvNeXt_T
 import matplotlib.pyplot as plt 
 from dataset import train_loader, test_loader
+import wandb
 
 # Initial testing on data loading
 def load_data():
@@ -124,6 +125,19 @@ def plot_metrics(train_losses, val_losses, train_accs, val_accs):
     print("saved training metrics")
 
 def main():
+        
+    wandb.init(
+    project="convnext-adni",    
+    name="convnext_tiny_run1",   
+    config={
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "optimizer": "AdamW",
+        "scheduler": "StepLR",
+        "architecture": "ConvNeXt-Tiny"
+        }
+    )
 
     # Data loading
     print(" >>>> Loading data <<<< ")
@@ -136,6 +150,7 @@ def main():
     
     model = ConvNeXt_T(in_ch=1, num_classes=len(classes)).to(DEVICE)
     criterion = nn.CrossEntropyLoss() # Loss function
+    wandb.watch(model, criterion, log="all", log_freq=50)
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
     
@@ -165,6 +180,14 @@ def main():
             print(f" Save new best model (Val Acc: {val_acc:.2f}%)")
     
     plot_metrics(train_losses, val_losses, train_accs, val_accs)
+
+    wandb.log({
+    "train_loss": train_loss,
+    "train_acc": train_acc,
+    "val_loss": val_loss,
+    "val_acc": val_acc,
+    "learning_rate": scheduler.get_last_lr()[0]
+    })
 
     # Final Test
     print("\n >>>> Testing best model <<<<")
