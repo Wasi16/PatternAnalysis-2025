@@ -43,6 +43,10 @@ def load_data():
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAVE_PATH = "convnext_tiny_best.pth"
 
+batch_size = 16
+learning_rate =  1e-4
+epochs = 15
+
 # Utility functions 
 def train_one_epoch(model,dataloader, criterion, optimizer):
     """ Run one training epoch """
@@ -100,3 +104,51 @@ def test(model, dataloader):
             total += labels.size(0)
             correct += preds.eq(labels).sum().item()
     return 100.0 * correct / total
+
+def main():
+
+    # Data loading
+    print(" >>>> Loading data <<<< ")
+    train_load, val_load, classes = train_loader(batch_size=batch_size)
+    test_load = test_loader(batch_size=batch_size)
+
+    print(f"Train : {len(train_load)}")
+    print(f"Validation : {len(val_load)}")
+    print(f"Test : {len(test_load)}")
+    
+    # 
+    model = ConvNeXt_T(in_ch=1, num_classes=len(classes)).to(DEVICE)
+    criterion = nn.CrossEntropyLoss() # Loss function
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
+    
+    # Main Training loop
+    train_losses, val_losses, train_accs, val_accs = [], [], [], []
+    best_val_acc = 0.0
+
+    for epoch in range(epochs):
+        print(f"\n Epoch {epoch+1}/{epochs}")
+
+        train_loss, train_acc = train_one_epoch(model, train_load, criterion, optimizer)
+        val_loss, val_acc = validate(model, val_load, criterion)
+        scheduler.step()
+        
+        # Track Progress and save model 
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        train_accs.append(train_acc)
+        val_accs.append(val_acc)
+
+        print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
+        print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+        
+        if val_acc > best_val_acc:
+            torch.save(model.state_dict(), SAVE_PATH)
+            best_val_acc = val_acc
+            print(f" Save new best model (Val Acc: {val_acc:.2f}%)")
+    
+    # Final Test
+    print("\n >>>> Testing best model <<<<")
+    model.load_state_dict(torch.load(SAVE_PATH, map_location=DEVICE))
+    test_acc = test(model, test_load)
+    print(f" Final Test Accuracy: {test_acc:.2f}%")
