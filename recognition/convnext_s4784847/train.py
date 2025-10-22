@@ -105,6 +105,24 @@ def test(model, dataloader):
             correct += preds.eq(labels).sum().item()
     return 100.0 * correct / total
 
+def plot_metrics(train_losses, val_losses, train_accs, val_accs):
+    """Plots and saves loss and accuracy curves."""
+    plt.figure(figsize=(10,4))
+    plt.subplot(1,2,1)
+    plt.plot(train_losses, label="Train Loss")
+    plt.plot(val_losses, label="Val Loss")
+    plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.title("Loss Curves"); plt.legend()
+
+    plt.subplot(1,2,2)
+    plt.plot(train_accs, label="Train Acc")
+    plt.plot(val_accs, label="Val Acc")
+    plt.xlabel("Epoch"); plt.ylabel("Accuracy (%)"); plt.title("Accuracy Curves"); plt.legend()
+
+    plt.tight_layout()
+    plt.savefig("training_metrics.png", dpi=300)
+    plt.show()
+    print("saved training metrics")
+
 def main():
 
     # Data loading
@@ -116,7 +134,6 @@ def main():
     print(f"Validation : {len(val_load)}")
     print(f"Test : {len(test_load)}")
     
-    # 
     model = ConvNeXt_T(in_ch=1, num_classes=len(classes)).to(DEVICE)
     criterion = nn.CrossEntropyLoss() # Loss function
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
@@ -147,8 +164,14 @@ def main():
             best_val_acc = val_acc
             print(f" Save new best model (Val Acc: {val_acc:.2f}%)")
     
+    plot_metrics(train_losses, val_losses, train_accs, val_accs)
+
     # Final Test
     print("\n >>>> Testing best model <<<<")
     model.load_state_dict(torch.load(SAVE_PATH, map_location=DEVICE))
     test_acc = test(model, test_load)
     print(f" Final Test Accuracy: {test_acc:.2f}%")
+
+if __name__ == "__main__":
+    main()
+
