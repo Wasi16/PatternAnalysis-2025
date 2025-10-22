@@ -23,7 +23,7 @@ class ConvNeXtBlock(nn.Module):
         # First Pointwise Convolution(Expansion)
         self.pwconv1 = nn.Linear(dimentions,  4*dimentions)
         # Activation Function
-        self.act = nn.GELU
+        self.act = nn.GELU()
         # Second Pointwise Convolution(Projection)
         self.pwconv2 = nn.Linear(4* dimentions, dimentions)
 
@@ -68,7 +68,7 @@ class DownsampleLayer(nn.Module):
         x = x.permute(0, 3, 1, 2)
         return x
     
-class ConvNeXt_T():
+class ConvNeXt_T(nn.Module):
     """
     ConvNeXt Tiny implementation 
     """
@@ -94,7 +94,7 @@ class ConvNeXt_T():
             num_blocks = self.depths[i]
 
             # Create N ConvNeXt blocks for this stage
-            blocks = [ConvNeXtBlock(dim=out_channels) for _ in range(num_blocks)]
+            blocks = [ConvNeXtBlock(dimentions=out_channels) for _ in range(num_blocks)]
 
             stage = nn.Sequential(*blocks)
             self.stages.append(stage)
