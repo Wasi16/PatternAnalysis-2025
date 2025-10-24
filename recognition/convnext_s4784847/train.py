@@ -10,9 +10,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim 
 from tqdm import tqdm # progress bars
-from modules import ConvNeXt_T
+from modules import ConvNeXt_S
 import matplotlib.pyplot as plt 
 from dataset import train_loader, test_loader
+from sklearn.metrics import f1_score, confusion_matrix
+import itertools
+import numpy as np
 import wandb
 
 # Initial testing on data loading
@@ -42,14 +45,14 @@ def load_data():
 
 # Configuration and setup
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-SAVE_PATH = "convnext_tiny_best.pth"
+SAVE_PATH = "convnext_small_best.pth"
 
-batch_size = 16
-learning_rate =  1e-4
-epochs = 15
+batch_size = 128
+learning_rate =  3e-4
+epochs = 80
 
 # Utility functions 
-def train_one_epoch(model,dataloader, criterion, optimizer):
+def train_one_epoch(model,dataloader, criterion, optimizer,scaler):
     """ Run one training epoch """
 
     model.train()
@@ -59,10 +62,16 @@ def train_one_epoch(model,dataloader, criterion, optimizer):
     for images, labels in tqdm(dataloader, desc="Training", leave=False):
         images,labels = images.to(DEVICE), labels.to(DEVICE)
         optimizer.zero_grad() 
-        outputs = model(images) # forward pass
-        loss = criterion(outputs,labels) # compute scaler loss
-        loss.backward() # backpropagate
-        optimizer.step() 
+
+        # Mixed Preicision
+        with torch.amp.autocast("cuda"):
+            outputs = model(images) # forward pass
+            loss = criterion(outputs,labels) # compute scaler loss
+
+        scaler.scale(loss).backward() # backpropagate
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update()
 
         current_loss += loss.item() * images.size(0)
         _,preds = outputs.max(1)
@@ -73,25 +82,32 @@ def train_one_epoch(model,dataloader, criterion, optimizer):
     accuracy = 100.0 * correct / total 
     return avg_loss, accuracy
 
-def validate(model,dataloader,criterion):
+def validate(model,dataloader,criterion, classes):
     """ Validate the model performance on calidation set"""
 
     model.eval() # evaluation mode
     running_loss, correct, total = 0.0, 0,0
+    all_preds, all_labels = [],[]
 
     with torch.no_grad():
         for images, labels in tqdm(dataloader, desc="Validating", leave=False):
             images, labels = images.to(DEVICE), labels.to(DEVICE)
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+            with torch.amp.autocast("cuda"):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
             running_loss += loss.item() * images.size(0)
             _, preds = outputs.max(1)
             total += labels.size(0)
             correct += preds.eq(labels).sum().item()
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
 
     avg_loss = running_loss / total
     accuracy = 100.0 * correct / total
-    return avg_loss, accuracy
+    f1 = f1_score(all_labels, all_preds, average="weighted")
+
+
+    return avg_loss, accuracy, f1
 
 def test(model, dataloader):
     """ Evaluate the model on test set. """
@@ -128,15 +144,17 @@ def main():
         
     wandb.init(
     project="convnext-adni",    
-    name="convnext_tiny_run1",   
+    name="convnext_small_run1",   
     config={
         "epochs": epochs,
         "batch_size": batch_size,
         "learning_rate": learning_rate,
         "optimizer": "AdamW",
         "scheduler": "StepLR",
+        "scheduler": "CosineAnnealingLR",
         "architecture": "ConvNeXt-Tiny"
-        }
+        },
+        save_code = True
     )
 
     # Data loading
@@ -148,11 +166,13 @@ def main():
     print(f"Validation : {len(val_load)}")
     print(f"Test : {len(test_load)}")
     
-    model = ConvNeXt_T(in_ch=1, num_classes=len(classes)).to(DEVICE)
+    model = ConvNeXt_S(in_ch=1, num_classes=len(classes)).to(DEVICE)
     criterion = nn.CrossEntropyLoss() # Loss function
-    wandb.watch(model, criterion, log="all", log_freq=50)
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    scaler = torch.amp.GradScaler("cuda")
+
+    wandb.watch(model, criterion, log="all", log_freq=100)
     
     # Main Training loop
     train_losses, val_losses, train_accs, val_accs = [], [], [], []
@@ -161,8 +181,8 @@ def main():
     for epoch in range(epochs):
         print(f"\n Epoch {epoch+1}/{epochs}")
 
-        train_loss, train_acc = train_one_epoch(model, train_load, criterion, optimizer)
-        val_loss, val_acc = validate(model, val_load, criterion)
+        train_loss, train_acc = train_one_epoch(model, train_load, criterion, optimizer, scaler)
+        val_loss, val_acc, val_f1 = validate(model, val_load, criterion, classes)
         scheduler.step()
         
         # Track Progress and save model 
@@ -172,8 +192,18 @@ def main():
         val_accs.append(val_acc)
 
         print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
-        print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+        print(f"Val   - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%, F1: {val_f1:.3f}")
         
+        wandb.log({
+            "epoch": epoch + 1,
+            "train/loss": train_loss,
+            "train/acc": train_acc,
+            "val/loss": val_loss,
+            "val/acc": val_acc,
+            "val/f1": val_f1,
+            "lr": scheduler.get_last_lr()[0]
+        })
+
         if val_acc > best_val_acc:
             torch.save(model.state_dict(), SAVE_PATH)
             best_val_acc = val_acc
@@ -181,19 +211,15 @@ def main():
     
     plot_metrics(train_losses, val_losses, train_accs, val_accs)
 
-    wandb.log({
-    "train_loss": train_loss,
-    "train_acc": train_acc,
-    "val_loss": val_loss,
-    "val_acc": val_acc,
-    "learning_rate": scheduler.get_last_lr()[0]
-    })
-
     # Final Test
     print("\n >>>> Testing best model <<<<")
     model.load_state_dict(torch.load(SAVE_PATH, map_location=DEVICE))
     test_acc = test(model, test_load)
     print(f" Final Test Accuracy: {test_acc:.2f}%")
+
+    wandb.log({"test/acc": test_acc})
+
+    wandb.finish()
 
 if __name__ == "__main__":
     main()
