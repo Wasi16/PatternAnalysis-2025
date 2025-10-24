@@ -106,6 +106,12 @@ def validate(model,dataloader,criterion, classes):
     accuracy = 100.0 * correct / total
     f1 = f1_score(all_labels, all_preds, average="weighted")
 
+    
+    cm = confusion_matrix(all_labels, all_preds, labels=list(range(len(classes))))
+    cm_path = plot_confusion_matrix(cm, classes, normalize=True, out_path="val_confusion.png")
+
+    wandb.log({"val/confusion_matrix": wandb.Image(cm_path)})
+
 
     return avg_loss, accuracy, f1
 
@@ -139,6 +145,31 @@ def plot_metrics(train_losses, val_losses, train_accs, val_accs):
     plt.savefig("training_metrics.png", dpi=300)
     plt.show()
     print("saved training metrics")
+
+def plot_confusion_matrix(cm, classes, normalize=True, title="Confusion matrix", out_path="conf_matrix.png"):
+    if normalize:
+        cm = cm.astype('float') / (cm.sum(axis=1, keepdims=True) + 1e-12)
+    plt.figure(figsize=(6,5))
+    plt.imshow(cm, interpolation='nearest', cmap='Blues')
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45, ha="right")
+    plt.yticks(tick_marks, classes)
+
+    fmt = ".2f" if normalize else "d"
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black",
+                 fontsize=8)
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    return out_path
 
 def main():
         
