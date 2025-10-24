@@ -68,16 +68,21 @@ class DownsampleLayer(nn.Module):
         x = x.permute(0, 3, 1, 2)
         return x
     
-class ConvNeXt_T(nn.Module):
+class ConvNeXt_S(nn.Module):
     """
-    ConvNeXt Tiny implementation 
+    ConvNeXt Small implementation 
     """
     def __init__(self, in_ch=1, num_classes=2):
         super().__init__()
-
+        
         # Stage configuration (depths and channel sizes)
-        self.depths = [3, 3, 9, 3]          # Number of ConvNeXt blocks per stage
-        self.dims = [96, 192, 384, 768]     # Channels per stage
+        # ConvNeXt Tiny 
+        #self.depths = [3, 3, 9, 3]          # Number of ConvNeXt blocks per stage
+        #self.dims = [96, 192, 384, 768]     # Channels per stage
+
+        # ConvNeXt Small 
+        self.depths = [3, 3, 27, 3]   
+        self.dims   = [96, 192, 384, 768]
 
         # Stem / Patchify layer
         self.stem = nn.Sequential(
