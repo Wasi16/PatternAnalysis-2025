@@ -48,7 +48,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAVE_PATH = "convnext_small_best.pth"
 
 batch_size = 128
-learning_rate =  3e-4
+learning_rate =  2e-4 
 epochs = 80
 
 # Utility functions 
@@ -208,11 +208,17 @@ def main():
     # Main Training loop
     train_losses, val_losses, train_accs, val_accs = [], [], [], []
     best_val_acc = 0.0
+    best_val_loss = float("inf")
+    epochs_no_improve = 0
+    patience = 8
+    early_stop = False
 
     for epoch in range(epochs):
         print(f"\n Epoch {epoch+1}/{epochs}")
-
+        
+        # Training
         train_loss, train_acc = train_one_epoch(model, train_load, criterion, optimizer, scaler)
+        # Validation
         val_loss, val_acc, val_f1 = validate(model, val_load, criterion, classes)
         scheduler.step()
         
@@ -225,6 +231,7 @@ def main():
         print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
         print(f"Val   - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%, F1: {val_f1:.3f}")
         
+        # Log metrics to weights and biases
         wandb.log({
             "epoch": epoch + 1,
             "train/loss": train_loss,
@@ -235,16 +242,34 @@ def main():
             "lr": scheduler.get_last_lr()[0]
         })
 
-        if val_acc > best_val_acc:
+        # Early stopping logic (based on validation loss) 
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
             torch.save(model.state_dict(), SAVE_PATH)
-            best_val_acc = val_acc
-            print(f" Save new best model (Val Acc: {val_acc:.2f}%)")
-    
+            epochs_no_improve = 0
+            print(f"Validation loss improved to {val_loss:.4f}. Model saved.")
+        else:
+            epochs_no_improve += 1
+            print(f" No improvement for {epochs_no_improve} epoch(s).")
+
+        # Stop if no improvement for 'patience' epochs
+        if epochs_no_improve >= patience:
+            print(f"Early stopping triggered after {epoch+1} epochs.")
+            wandb.log({"early_stop_epoch": epoch + 1})
+            early_stop = True
+            break
+
+    # Plot training
     plot_metrics(train_losses, val_losses, train_accs, val_accs)
+
+    if early_stop:
+        print("Loading best saved model before early stop...")
+    else:
+        print("Training completed full schedule. Loading best model...")
+    model.load_state_dict(torch.load(SAVE_PATH, map_location=DEVICE))
 
     # Final Test
     print("\n >>>> Testing best model <<<<")
-    model.load_state_dict(torch.load(SAVE_PATH, map_location=DEVICE))
     test_acc = test(model, test_load)
     print(f" Final Test Accuracy: {test_acc:.2f}%")
 
