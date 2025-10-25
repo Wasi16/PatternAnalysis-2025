@@ -29,8 +29,9 @@ def get_transforms(train=True, std = 0.5, mean = 0.5):
     if train:
         return transforms.Compose([
             transforms.Resize(IMAGE_SIZE),
-            transforms.RandAugment(num_ops=2),
+            transforms.RandAugment(num_ops=3),
             transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(10),
             transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
             transforms.Normalize(mean, std)
@@ -64,7 +65,9 @@ def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT):
 def test_loader(batch_size= BATCH_SIZE):
     """Load ADNI test data"""
     test_dir = os.path.join(ADNI_DATA_PATH, "test")
-    test_dataset = datasets.ImageFolder(test_dir, transform=get_transforms(train=False))
+    mean,std = load_values()
+
+    test_dataset = datasets.ImageFolder(test_dir, transform=get_transforms(train=False, std=std, mean=mean))
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     print(f"test samples: {len(test_dataset)}")
     return test_loader
