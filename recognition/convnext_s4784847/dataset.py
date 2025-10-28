@@ -69,6 +69,55 @@ def get_patient_splits(data_dir, val_split=0.2, seed=42):
     print(f"Train patients: {len(train_patients)}, Val patients: {len(val_patients)}")
     return set(train_patients), set(val_patients)
 
+class ADNIDataset(Dataset):
+    """
+    Custom ADNI Dataset that tracks patient IDs.
+    """
+    def __init__(self, root_dir, transform=None, patient_ids=None):
+        """
+        Args:
+            root_dir: Directory with class subdirectories
+            transform: Optional transform to apply
+            patient_ids: Set of patient IDs to include (None = all)
+        """
+        self.root_dir = root_dir
+        self.transform = transform
+        self.patient_ids = patient_ids
+        self.samples = []
+        self.classes = sorted(os.listdir(root_dir))
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
+        
+        # Load samples
+        for class_name in self.classes:
+            class_path = os.path.join(root_dir, class_name)
+            if not os.path.isdir(class_path):
+                continue
+                
+            class_idx = self.class_to_idx[class_name]
+            for filename in os.listdir(class_path):
+                if not filename.endswith(('.jpg', '.jpeg', '.png')):
+                    continue
+                    
+                patient_id = extract_patient_id(filename)
+                
+                # Filter by patient_ids if provided
+                if patient_ids is None or patient_id in patient_ids:
+                    filepath = os.path.join(class_path, filename)
+                    self.samples.append((filepath, class_idx, patient_id))
+    
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        filepath, label, patient_id = self.samples[idx]
+        image = Image.open(filepath).convert('RGB')
+        
+        if self.transform:
+            image = self.transform(image)
+        
+        return image, label, patient_id
+
+
 def load_values():
     mean, std = mean_std_calc(os.path.join(ADNI_DATA_PATH, "train"), grayscale= True)
     return mean,std
