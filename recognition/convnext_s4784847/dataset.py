@@ -208,23 +208,50 @@ def get_transforms(train=True, std = 0.5, mean = 0.5):
             transforms.Normalize(mean,std)
         ])
     
-def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT):
+def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT, use_patient_grouping=True):
     """Load ADNI training data and split into train/validation sets."""
     torch.manual_seed(SEED)
     train_dir = os.path.join(ADNI_DATA_PATH, "train")
     mean,std = load_values()
 
-    full_dataset = datasets.ImageFolder(train_dir, transform=get_transforms(train=True, std=std, mean=mean))
-    val_size = int(len(full_dataset) * val_split)
-    train_size = len(full_dataset) - val_size
-
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-
-    print(f"Classes: {full_dataset.classes}")
-    print(f"Train: {train_size}, Val: {val_size}")
-    return train_loader, val_loader, full_dataset.classes
+    # Get patient-level splits
+    train_patients, val_patients = get_patient_splits(train_dir, val_split, SEED)
+    
+    if use_patient_grouping:
+        # One random scan per patient per epoch
+        train_dataset = ADNIPatientDataset(
+            train_dir, 
+            transform=get_transforms(train=True, std=std, mean=mean),
+            patient_ids=train_patients,
+            mode='single'
+        )
+        val_dataset = ADNIPatientDataset(
+            train_dir,
+            transform=get_transforms(train=False, std=std, mean=mean),
+            patient_ids=val_patients,
+            mode='single'
+        )
+    else:
+        # All scans as separate samples
+        train_dataset = ADNIDataset(
+            train_dir,
+            transform=get_transforms(train=True, std=std, mean=mean),
+            patient_ids=train_patients
+        )
+        val_dataset = ADNIDataset(
+            train_dir,
+            transform=get_transforms(train=False, std=std, mean=mean),
+            patient_ids=val_patients
+        )
+    
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0,pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0,pin_memory=True)
+    
+    classes = train_dataset.classes
+    print(f"Classes: {classes}")
+    print(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
+    
+    return train_loader, val_loader, classes
 
 def test_loader(batch_size= BATCH_SIZE):
     """Load ADNI test data"""
