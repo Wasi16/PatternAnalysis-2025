@@ -253,12 +253,28 @@ def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT, use_patient_groupin
     
     return train_loader, val_loader, classes
 
-def test_loader(batch_size= BATCH_SIZE):
-    """Load ADNI test data"""
+def test_loader(batch_size=BATCH_SIZE, use_patient_aggregation=False):
+    """
+    Load ADNI test data.
+    """
     test_dir = os.path.join(ADNI_DATA_PATH, "test")
-    mean,std = load_values()
+    mean, std = load_values()
 
-    test_dataset = datasets.ImageFolder(test_dir, transform=get_transforms(train=False, std=std, mean=mean))
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-    print(f"test samples: {len(test_dataset)}")
+    if use_patient_aggregation:
+        test_dataset = ADNIPatientDataset(
+            test_dir,
+            transform=get_transforms(train=False, std=std, mean=mean),
+            patient_ids=None,
+            mode='all'
+        )
+    else:
+        test_dataset = ADNIDataset(
+            test_dir,
+            transform=get_transforms(train=False, std=std, mean=mean),
+            patient_ids=None
+        )
+
+    test_loader = DataLoader(test_dataset, batch_size=batch_size if not use_patient_aggregation else 1, shuffle=False, num_workers=0, pin_memory=True)
+
+    print(f"Test samples: {len(test_dataset)}")
     return test_loader
