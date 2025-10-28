@@ -117,6 +117,72 @@ class ADNIDataset(Dataset):
         
         return image, label, patient_id
 
+class ADNIPatientDataset(Dataset):
+    """
+    Dataset that groups all scans per patient.
+    Can return either all scans or a random scan per patient.
+    """
+    def __init__(self, root_dir, transform=None, patient_ids=None, mode='single'):
+        """
+        Args:
+            mode: 'single' - return one random scan per patient
+                  'all' - return all scans per patient (for aggregation)
+        """
+        self.root_dir = root_dir
+        self.transform = transform
+        self.patient_ids = patient_ids
+        self.mode = mode
+        self.classes = sorted(os.listdir(root_dir))
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
+        
+        # Group samples by patient
+        self.patient_scans = defaultdict(list)
+        self.patient_labels = {}
+        
+        for class_name in self.classes:
+            class_path = os.path.join(root_dir, class_name)
+            if not os.path.isdir(class_path):
+                continue
+                
+            class_idx = self.class_to_idx[class_name]
+            for filename in os.listdir(class_path):
+                if not filename.endswith(('.jpg', '.jpeg', '.png')):
+                    continue
+                    
+                patient_id = extract_patient_id(filename)
+                
+                if patient_ids is None or patient_id in patient_ids:
+                    filepath = os.path.join(class_path, filename)
+                    self.patient_scans[patient_id].append(filepath)
+                    self.patient_labels[patient_id] = class_idx
+        
+        self.patient_list = list(self.patient_scans.keys())
+    
+    def __len__(self):
+        return len(self.patient_list)
+    
+    def __getitem__(self, idx):
+        patient_id = self.patient_list[idx]
+        scans = self.patient_scans[patient_id]
+        label = self.patient_labels[patient_id]
+        
+        if self.mode == 'single':
+            # Return one random scan
+            scan_path = np.random.choice(scans)
+            image = Image.open(scan_path).convert('RGB')
+            if self.transform:
+                image = self.transform(image)
+            return image, label
+        
+        else:  # mode == 'all'
+            # Return all scans for this patient
+            images = []
+            for scan_path in scans:
+                image = Image.open(scan_path).convert('RGB')
+                if self.transform:
+                    image = self.transform(image)
+                images.append(image)
+            return torch.stack(images), label, len(images)
 
 def load_values():
     mean, std = mean_std_calc(os.path.join(ADNI_DATA_PATH, "train"), grayscale= True)
