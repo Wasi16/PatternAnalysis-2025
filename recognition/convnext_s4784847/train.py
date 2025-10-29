@@ -13,7 +13,7 @@ from tqdm import tqdm # progress bars
 from modules import ConvNeXt_S
 import matplotlib.pyplot as plt 
 from dataset import train_loader, test_loader
-from sklearn.metrics import f1_score, confusion_matrix
+from sklearn.metrics import f1_score, confusion_matrix, classification_report
 import itertools
 import numpy as np
 import wandb
@@ -249,9 +249,32 @@ def main():
     print(f"classes: {classes}")
     
     model = ConvNeXt_S(in_ch=1, num_classes=len(classes)).to(DEVICE)
-    criterion = nn.CrossEntropyLoss() # Loss function
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+    # Count parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total parameters: {total_params:,}")
+    print(f"Trainable parameters: {trainable_params:,}")
+
+    print("\n>>> Calculating class weights from training dataset...")
+    class_counts = [0, 0]
+    for _, label, *_ in train_load.dataset:
+        if isinstance(label, torch.Tensor):
+            label = int(label.item()) 
+        class_counts[label] += 1
+
+    total_samples = sum(class_counts)
+    w_AD = total_samples / class_counts[0]
+    w_NC = total_samples / class_counts[1]
+
+    print(f"Class counts → AD: {class_counts[0]}, NC: {class_counts[1]}")
+    print(f"Class weights → AD: {w_AD:.3f}, NC: {w_NC:.3f}")
+
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=torch.tensor([w_AD,w_NC], dtype=torch.float32).to(DEVICE)) # Loss function
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01,betas=(0.9, 0.999) )
+    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=8, min_lr=1e-6)
+
     scaler = torch.amp.GradScaler("cuda")
 
     wandb.watch(model, criterion, log="all", log_freq=100)
@@ -261,7 +284,7 @@ def main():
     best_val_acc = 0.0
     best_val_loss = float("inf")
     epochs_no_improve = 0
-    patience = 8
+    patience = 20
     early_stop = False
 
     for epoch in range(epochs):
@@ -271,7 +294,7 @@ def main():
         train_loss, train_acc = train_one_epoch(model, train_load, criterion, optimizer, scaler)
         # Validation
         val_loss, val_acc, val_f1 = validate(model, val_load, criterion, classes)
-        scheduler.step()
+        scheduler.step(val_f1)
         
         # Track Progress and save model 
         train_losses.append(train_loss)
@@ -281,7 +304,8 @@ def main():
 
         print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
         print(f"Val   - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%, F1: {val_f1:.3f}")
-        
+        print(f"LR: {current_lr:.2e}")
+
         # Log metrics to weights and biases
         wandb.log({
             "epoch": epoch + 1,
@@ -293,22 +317,22 @@ def main():
             "lr": scheduler.get_last_lr()[0]
         })
 
-        # Early stopping logic (based on validation loss) 
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), SAVE_PATH)
+        # Save best model based on F1 score
+        if val_f1 > best_val_f1:
+            best_val_f1 = val_f1
+            best_val_acc = val_acc
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_acc': val_acc,
+                'val_f1': val_f1,
+            }, SAVE_PATH)
             epochs_no_improve = 0
-            print(f"Validation loss improved to {val_loss:.4f}. Model saved.")
+            print(f"New best F1: {val_f1:.3f} (Acc: {val_acc:.2f}%)")
         else:
             epochs_no_improve += 1
-            print(f" No improvement for {epochs_no_improve} epoch(s).")
-
-        # Stop if no improvement for 'patience' epochs
-        if epochs_no_improve >= patience:
-            print(f"Early stopping triggered after {epoch+1} epochs.")
-            wandb.log({"early_stop_epoch": epoch + 1})
-            early_stop = True
-            break
+            print(f"No improvement for {epochs_no_improve} epoch(s)")
 
     # Plot training
     plot_metrics(train_losses, val_losses, train_accs, val_accs)
@@ -317,15 +341,53 @@ def main():
         print("Loading best saved model before early stop...")
     else:
         print("Training completed full schedule. Loading best model...")
-    model.load_state_dict(torch.load(SAVE_PATH, map_location=DEVICE))
+    checkpoint = torch.load(SAVE_PATH, map_location=DEVICE, weights_only=False)
+    model.load_state_dict(checkpoint['model_state_dict'])
 
-    # Final Test
-    print("\n >>>> Testing best model <<<<")
-    test_acc = test(model, test_load)
-    print(f" Final Test Accuracy: {test_acc:.2f}%")
+    test_acc_single, test_f1_single, preds, labels = test_with_aggregation(
+        model, test_load_single, use_aggregation=False
+    )
+    print(f"Test Accuracy: {test_acc_single:.2f}%")
+    print(f"Test F1 Score: {test_f1_single:.3f}")
+    
+    # Test with multi-scan aggregation
+    print(f"\n{'='*60}")
+    print(f" Testing (Multi-Scan Aggregation)...")
+    print(f"{'='*60}")
+    
+    test_acc_agg, test_f1_agg, preds_agg, labels_agg = test_with_aggregation(
+        model, test_load_agg, use_aggregation=True
+    )
+    print(f"Test Accuracy: {test_acc_agg:.2f}%")
+    print(f"Test F1 Score: {test_f1_agg:.3f}")
+    
+    # Confusion matrix for aggregated test
+    test_cm = confusion_matrix(labels_agg, preds_agg)
+    plot_confusion_matrix(test_cm, classes, normalize=True, 
+                         title="Test Confusion Matrix (Aggregated)",
+                         out_path="test_confusion_agg.png")
+    
+    # Classification report
+    print(f"\n{'='*60}")
+    print(" Classification Report (Aggregated):")
+    print(f"{'='*60}")
+    print(classification_report(labels_agg, preds_agg, target_names=classes))
+    
+    # Log final results
+    wandb.log({
+        "test/acc_single": test_acc_single,
+        "test/f1_single": test_f1_single,
+        "test/acc_aggregated": test_acc_agg,
+        "test/f1_aggregated": test_f1_agg,
+        "test/confusion_matrix": wandb.Image("test_confusion_agg.png")
+    })
+    
+    print(f"\n{'='*60}")
+    print(f" Training Complete!")
+    print(f"{'='*60}")
+    print(f"Best Val Acc: {best_val_acc:.2f}%")
 
-    wandb.log({"test/acc": test_acc})
-
+    wandb.log({"test/acc": test_acc_single})
     wandb.finish()
 
 if __name__ == "__main__":
