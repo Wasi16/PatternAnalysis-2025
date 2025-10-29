@@ -18,38 +18,13 @@ import itertools
 import numpy as np
 import wandb
 
-# Initial testing on data loading
-def load_data():
-    print("Start....")
-    train_data, val_data, classes = train_loader(batch_size=8)
-
-    print(f"Classes detected: {classes}")
-    print(f"Training batches: {len(train_data)}")
-    print(f"Validation batches: {len(val_data)}")
-
-    # Fetch one batch from the train loader
-    images, labels = next(iter(train_data))
-    print(f"Batch shape: {images.shape}")  # Expect [8, 1, 256, 256]
-    print(f"Labels: {labels.tolist()}")
-
-    # Visualise
-    fig, axes = plt.subplots(1, 6, figsize=(12, 3))
-    for i in range(6):
-        axes[i].imshow(images[i][0], cmap="gray")
-        axes[i].set_title(f"{classes[labels[i]]}")
-        axes[i].axis("off")
-    plt.tight_layout()
-    plt.show()
-
-    return 0
-
 # Configuration and setup
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAVE_PATH = "convnext_small_best.pth"
 
-batch_size = 128
-learning_rate =  2e-4 
-epochs = 80
+batch_size = 12 #32
+learning_rate = 2e-4  #3e-4
+epochs = 100 #150
 
 # Utility functions 
 def train_one_epoch(model,dataloader, criterion, optimizer,scaler):
@@ -59,10 +34,16 @@ def train_one_epoch(model,dataloader, criterion, optimizer,scaler):
     current_loss, correct, total = 0.0, 0, 0 # running totals for loss and accuracy
 
     # iterate over mini batches
-    for images, labels in tqdm(dataloader, desc="Training", leave=False):
-        images,labels = images.to(DEVICE), labels.to(DEVICE)
-        optimizer.zero_grad() 
-
+    for batch in tqdm(dataloader, desc="Training", leave=False):
+        # Handle both dataset types
+        if len(batch) == 3:
+            images, labels, _ = batch
+        else:
+            images, labels = batch
+        
+        images, labels = images.to(DEVICE), labels.to(DEVICE)
+        optimizer.zero_grad(set_to_none=True)
+        
         # Mixed Preicision
         with torch.amp.autocast("cuda"):
             outputs = model(images) # forward pass
@@ -90,7 +71,13 @@ def validate(model,dataloader,criterion, classes):
     all_preds, all_labels = [],[]
 
     with torch.no_grad():
-        for images, labels in tqdm(dataloader, desc="Validating", leave=False):
+        for batch in tqdm(dataloader, desc="Validating", leave=False):
+            # Handle both dataset types
+            if len(batch) == 3:
+                images, labels, _ = batch
+            else:
+                images, labels = batch
+
             images, labels = images.to(DEVICE), labels.to(DEVICE)
             with torch.amp.autocast("cuda"):
                 outputs = model(images)
