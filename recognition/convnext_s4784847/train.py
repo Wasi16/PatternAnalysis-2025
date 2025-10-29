@@ -43,7 +43,7 @@ def train_one_epoch(model,dataloader, criterion, optimizer,scaler):
         
         images, labels = images.to(DEVICE), labels.to(DEVICE)
         optimizer.zero_grad(set_to_none=True)
-        
+
         # Mixed Preicision
         with torch.amp.autocast("cuda"):
             outputs = model(images) # forward pass
@@ -115,6 +115,66 @@ def test(model, dataloader):
             correct += preds.eq(labels).sum().item()
     return 100.0 * correct / total
 
+def test_with_aggregation(model, dataloader, use_aggregation=True):
+    """
+    Test with optional multi-scan aggregation per patient.
+    
+    If use_aggregation=True:
+        - Average predictions across all scans for each patient
+        - More robust but requires patient-grouped test loader
+    """
+    model.eval()
+    correct, total = 0, 0
+    all_preds, all_labels = [], []
+    
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Testing", leave=False):
+            if use_aggregation and len(batch) == 3:
+                # Patient-level aggregation
+                images, labels, num_scans = batch
+                images = images.squeeze(0)  # Remove batch dimension
+                labels = labels.to(DEVICE)
+                
+                # Get predictions for all scans
+                scan_outputs = []
+                for i in range(0, len(images), 16):  # Process in mini-batches
+                    batch_scans = images[i:i+16].to(DEVICE)
+                    with torch.amp.autocast("cuda"):
+                        outputs = model(batch_scans)
+                    scan_outputs.append(outputs)
+                
+                # Average logits across all scans
+                all_outputs = torch.cat(scan_outputs, dim=0)
+                avg_output = all_outputs.mean(dim=0, keepdim=True)
+                _, pred = avg_output.max(1)
+                
+                total += 1
+                correct += pred.eq(labels).sum().item()
+                all_preds.append(pred.cpu().item())
+                all_labels.append(labels.cpu().item())
+            else:
+                # Standard single-scan prediction
+                if len(batch) == 3:
+                    images, labels, _ = batch
+                else:
+                    images, labels = batch
+                    
+                images, labels = images.to(DEVICE), labels.to(DEVICE)
+                
+                with torch.amp.autocast("cuda"):
+                    outputs = model(images)
+                _, preds = outputs.max(1)
+                
+                total += labels.size(0)
+                correct += preds.eq(labels).sum().item()
+                all_preds.extend(preds.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+    
+    accuracy = 100.0 * correct / total
+    f1 = f1_score(all_labels, all_preds, average="weighted")
+    
+    return accuracy, f1, all_preds, all_labels
+
 def plot_metrics(train_losses, val_losses, train_accs, val_accs):
     """Plots and saves loss and accuracy curves."""
     plt.figure(figsize=(10,4))
@@ -162,7 +222,7 @@ def main():
         
     wandb.init(
     project="convnext-adni",    
-    name="convnext_small_run1",   
+    name="convnext_small_run",   
     config={
         "epochs": epochs,
         "batch_size": batch_size,
@@ -170,19 +230,23 @@ def main():
         "optimizer": "AdamW",
         "scheduler": "StepLR",
         "scheduler": "CosineAnnealingLR",
-        "architecture": "ConvNeXt-Tiny"
+        "architecture": "ConvNeXt-Tiny",
+        "label_smoothing": 0.1,
+        "weight_decay": 0.03
         },
         save_code = True
     )
 
     # Data loading
     print(" >>>> Loading data <<<< ")
-    train_load, val_load, classes = train_loader(batch_size=batch_size)
-    test_load = test_loader(batch_size=batch_size)
+    train_load, val_load, classes = train_loader(batch_size=batch_size,use_patient_grouping=True )
+    test_load_single = test_loader(batch_size=batch_size, use_patient_aggregation=False)
+    test_load_agg = test_loader(batch_size=1, use_patient_aggregation=True)
 
     print(f"Train : {len(train_load)}")
     print(f"Validation : {len(val_load)}")
-    print(f"Test : {len(test_load)}")
+    print(f"Test : {len(test_load_single)}")
+    print(f"classes: {classes}")
     
     model = ConvNeXt_S(in_ch=1, num_classes=len(classes)).to(DEVICE)
     criterion = nn.CrossEntropyLoss() # Loss function
