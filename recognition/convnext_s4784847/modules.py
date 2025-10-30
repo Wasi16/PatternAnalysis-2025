@@ -72,10 +72,11 @@ class ConvNeXt_S(nn.Module):
     """
     ConvNeXt Small implementation 
     """
-    def __init__(self, in_ch=1, num_classes=2):
+    def __init__(self, in_ch=1, num_classes=2, drop_rate=0.3):
         super().__init__()
         
         # Stage configuration (depths and channel sizes)
+
         # ConvNeXt Tiny 
         #self.depths = [3, 3, 9, 3]          # Number of ConvNeXt blocks per stage
         #self.dims = [96, 192, 384, 768]     # Channels per stage
@@ -110,6 +111,7 @@ class ConvNeXt_S(nn.Module):
 
         # Classification Head
         self.norm = nn.LayerNorm(self.dims[-1], eps=1e-6)
+        self.dropout = nn.Dropout(drop_rate)
         self.head = nn.Linear(self.dims[-1], num_classes)
 
         # Weight Initialization
@@ -145,6 +147,7 @@ class ConvNeXt_S(nn.Module):
 
         # Final normalization and classification head
         x = self.norm(x)
+        x = self.dropout(x)
         x = self.head(x)
         
         return x
