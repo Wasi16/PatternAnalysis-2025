@@ -22,9 +22,9 @@ import wandb
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAVE_PATH = "convnext_small_best.pth"
 
-batch_size = 12 #32
-learning_rate = 2e-4  #3e-4
-epochs = 100 #150
+batch_size = 28
+learning_rate = 1e-4
+epochs = 65
 
 # Utility functions 
 def train_one_epoch(model,dataloader, criterion, optimizer,scaler):
@@ -228,9 +228,8 @@ def main():
         "batch_size": batch_size,
         "learning_rate": learning_rate,
         "optimizer": "AdamW",
-        "scheduler": "StepLR",
-        "scheduler": "CosineAnnealingLR",
-        "architecture": "ConvNeXt-Tiny",
+        "scheduler": "ReduceLROnPlateau",
+        "architecture": "ConvNeXt-Small",
         "label_smoothing": 0.1,
         "weight_decay": 0.03
         },
@@ -239,7 +238,7 @@ def main():
 
     # Data loading
     print(" >>>> Loading data <<<< ")
-    train_load, val_load, classes = train_loader(batch_size=batch_size,use_patient_grouping=True )
+    train_load, val_load, classes = train_loader(batch_size=batch_size,use_patient_grouping=False )
     test_load_single = test_loader(batch_size=batch_size, use_patient_aggregation=False)
     test_load_agg = test_loader(batch_size=1, use_patient_aggregation=True)
 
@@ -262,18 +261,16 @@ def main():
         if isinstance(label, torch.Tensor):
             label = int(label.item()) 
         class_counts[label] += 1
-
-    total_samples = sum(class_counts)
-    w_AD = total_samples / class_counts[0]
-    w_NC = total_samples / class_counts[1]
+    
+    w_AD = 1.65
+    w_NC = 1.35
 
     print(f"Class counts → AD: {class_counts[0]}, NC: {class_counts[1]}")
     print(f"Class weights → AD: {w_AD:.3f}, NC: {w_NC:.3f}")
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=torch.tensor([w_AD,w_NC], dtype=torch.float32).to(DEVICE)) # Loss function
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01,betas=(0.9, 0.999) )
-    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=8, min_lr=1e-6)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05,betas=(0.9, 0.999) )
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=6, min_lr=1e-7)
 
     scaler = torch.amp.GradScaler("cuda")
 
@@ -282,10 +279,7 @@ def main():
     # Main Training loop
     train_losses, val_losses, train_accs, val_accs = [], [], [], []
     best_val_acc = 0.0
-    best_val_loss = float("inf")
     epochs_no_improve = 0
-    patience = 20
-    early_stop = False
 
     for epoch in range(epochs):
         print(f"\n Epoch {epoch+1}/{epochs}")
@@ -295,6 +289,7 @@ def main():
         # Validation
         val_loss, val_acc, val_f1 = validate(model, val_load, criterion, classes)
         scheduler.step(val_f1)
+        current_lr = scheduler.get_last_lr()[0]
         
         # Track Progress and save model 
         train_losses.append(train_loss)
@@ -314,7 +309,7 @@ def main():
             "val/loss": val_loss,
             "val/acc": val_acc,
             "val/f1": val_f1,
-            "lr": scheduler.get_last_lr()[0]
+            "lr": current_lr
         })
 
         # Save best model based on F1 score
@@ -332,15 +327,12 @@ def main():
             print(f"New best F1: {val_f1:.3f} (Acc: {val_acc:.2f}%)")
         else:
             epochs_no_improve += 1
-            print(f"No improvement for {epochs_no_improve} epoch(s)")
+            print(f"No improvement for {epochs_no_improve} epochs")
 
     # Plot training
     plot_metrics(train_losses, val_losses, train_accs, val_accs)
 
-    if early_stop:
-        print("Loading best saved model before early stop...")
-    else:
-        print("Training completed full schedule. Loading best model...")
+    print("Training completed. Loading best model...")
     checkpoint = torch.load(SAVE_PATH, map_location=DEVICE, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
 
@@ -381,11 +373,6 @@ def main():
         "test/f1_aggregated": test_f1_agg,
         "test/confusion_matrix": wandb.Image("test_confusion_agg.png")
     })
-    
-    print(f"\n{'='*60}")
-    print(f" Training Complete!")
-    print(f"{'='*60}")
-    print(f"Best Val Acc: {best_val_acc:.2f}%")
 
     wandb.log({"test/acc": test_acc_single})
     wandb.finish()
