@@ -1,6 +1,6 @@
 # Alzheimer's Disease Classification using ConvNeXt-Small
-Name :- Wasana Nawamini Udabage 
-StudentNo :- 47848476
+**Name:** Wasana Nawamini Udabage  
+**Student No:** 47848476
 
 ## Table of Contents 
 ConvNeXt 
@@ -33,12 +33,13 @@ The major architectureal updates for ConvNext were:
 - Switching from BatchNorm + ReLU to LayerNorm + GELU for smoother and more stable leanring 
 - Simplifying the overall layout into four clear stafes wirh dowunsampling between each one.
 
-# Why is it suitable for Medical Imaging?
+### Why is it suitable for Medical Imaging?
 
 I selected ConvNeXt since its design aligns well with the challenges of medical image analysis, particularly for MRI-based Alzheimer’s disease classification. The model’s large 7×7 depthwise convolutions enable it to capture broad spatial relationships across brain regions, which is crucial for detecting subtle structural changes associated with Alzheimer’s. Its use of Layer Normalisation and GELU activation helps maintain stable training on grayscale MRI data, which typically have lower contrast and variability than natural images. The hierarchical stage structure allows ConvNeXt to extract both local texture details and global anatomical patterns, improving classification robustness. Overall, ConvNeXt combines the simplicity and efficiency of convolutional networks with transformer inspired design principles, offering strong performance and interpretability while remaining computationally efficient for medical imaging tasks.
 
 ## Problem Space
 
+The focus of this project is on the classification of Alzheimer’s disease using MRI scans from the ADNI (Alzheimer’s Disease Neuroimaging Initiative) dataset. Alzheimer’s causes gradual structural changes in the brain, and early detection is crucial for treatment and diagnosis. The goal is to build a model capable of distinguishing between Alzheimer’s patients (AD) and cognitively normal controls (NC) based on 2D MRI slices. This task represents a real world medical image classification challenge, where accurate pattern recognition from subtle anatomical differences is essential.
 
 ## Project Structure 
 
@@ -51,11 +52,26 @@ The implementation is structured into four main files for clarity and maintainab
 
 ## Model Architecture 
 
+The mdel used in this project is ConvNext-Samll, a modernise convolustional neaural netwokr designed to combine the strngths of classic ConvNets like ResNet with concepts from VITs 
+It contains four hierachiacal stages with progressively increasing channel depth and decreasinf spatial resolustion 
+Each stage is compose of ConvNeCt blocks 
+- include  picture o fthe architecture here 
 
 ## Data loading 
 
+The dataset is saved in the files in the following format
+.
+├── AD_NC        
+    ├── Test      
+        ├── AD       
+        ├── NC       
+    ├── Train 
+        ├── AD    
+        ├── NC
+
 ### Data preprocessing and Normalisation 
 ### Pateient level data handling 
+### Data Augmentation
 
 
 ## Training the model 
@@ -76,17 +92,56 @@ The implementation is structured into four main files for clarity and maintainab
 
 ## How to run the system 
 
-used a100 
-initially atated with testingi n ranptr and moved to google colab afterwards 
+` pip install torch torchvision scikit-learn matplotlib tqdm wandb`
 
-mention the file path 
-slurm script 
-how I used wights and biases 
+
+**HPC (Rangpur) Training**
+
+Create a SLURM script (`run_train.sh`):
+```bash
+#!/bin/bash
+#SBATCH --job-name=convnext_adni
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --gres=gpu:A100:1
+#SBATCH --mem=32G
+#SBATCH --time=24:00:00
+#SBATCH --partition=gpu
+
+module load cuda/11.8
+module load python/3.9
+
+source /path/to/venv/bin/activate
+
+python train.py
+```
+
+Submit job:
+```bash
+sbatch run_train.sh
+```
+
+**Google Colab**
+
+Upload all files and adjust paths:
+```python
+ADNI_DATA_PATH = "/content/drive/MyDrive/ADNI/AD_NC"
+```
+
+Enable GPU runtime: Runtime → Change runtime type → A100 GPU
 
 ## Dependancies 
-
+python 
+PyTorch
+TorchVision
+scikit-learn
+Matplotlib 
+tqdm
+wandb
 
 ## References
+
 
 
 
