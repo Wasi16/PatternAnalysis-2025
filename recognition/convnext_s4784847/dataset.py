@@ -6,6 +6,7 @@ Loads and preprocess the ADNI dataset for Alzhimer's classification.
 """
 import os
 import torch
+import numpy as np
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import transforms, datasets
@@ -182,7 +183,10 @@ class ADNIPatientDataset(Dataset):
                 if self.transform:
                     image = self.transform(image)
                 images.append(image)
-            return torch.stack(images), label, len(images)
+
+            # Stack and average over scans to get one [C,H,W] tensor
+            images = torch.stack(images)  # [N, C, H, W]
+            return images, label, len(scans)
 
 def load_values():
     mean, std = mean_std_calc(os.path.join(ADNI_DATA_PATH, "train"), grayscale= True)
@@ -193,7 +197,6 @@ def get_transforms(train=True, std = 0.5, mean = 0.5):
     if train:
         return transforms.Compose([
             transforms.Resize(IMAGE_SIZE),
-            transforms.RandAugment(num_ops=3),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(15),
             transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
@@ -247,8 +250,8 @@ def train_loader(batch_size=BATCH_SIZE, val_split=VAL_SPLIT, use_patient_groupin
             patient_ids=val_patients
         )
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0,pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0,pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4,pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4,pin_memory=True)
     
     classes = train_dataset.classes
     print(f"Classes: {classes}")
@@ -271,13 +274,14 @@ def test_loader(batch_size=BATCH_SIZE, use_patient_aggregation=False):
             mode='all'
         )
     else:
-        test_dataset = ADNIDataset(
+        test_dataset = ADNIPatientDataset(
             test_dir,
             transform=get_transforms(train=False, std=std, mean=mean),
-            patient_ids=None
+            patient_ids=None,
+            mode='single'
         )
 
-    test_loader = DataLoader(test_dataset, batch_size=batch_size if not use_patient_aggregation else 1, shuffle=False, num_workers=0, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size if not use_patient_aggregation else 1, shuffle=False, num_workers=4, pin_memory=True)
 
     print(f"Test samples: {len(test_dataset)}")
     return test_loader
