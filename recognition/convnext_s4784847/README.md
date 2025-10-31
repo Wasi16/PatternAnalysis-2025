@@ -174,8 +174,8 @@ To reproduce the reported results, follow the environment setup and execution st
 
 ### Dependencies
 
-- python = 3.9
-- PyTorch = 2.1
+- python 
+- PyTorch 
 - TorchVision
 - scikit-learn
 - Matplotlib
@@ -514,3 +514,7 @@ This project successfully implemented and optimized a ConvNeXt-Small architectur
 4. freeCodeCamp. (2022).  
    How to Write Better Git Commit Messages.  
    [https://www.freecodecamp.org/news/how-to-write-better-git-commit-messages/](https://www.freecodecamp.org/news/how-to-write-better-git-commit-messages/)
+
+5. Claude AI. (2024).  
+   ConvNeXt Architecture Diagram.  
+   Generated using Claude AI by Anthropic.  
