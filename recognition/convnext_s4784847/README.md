@@ -360,7 +360,7 @@ criterion = nn.CrossEntropyLoss(
 
 ### Training and Validation Performance
 
-![Training Metrics](README%20resources/training_metrics.png)
+![Training Metrics](https://github.com/Wasi16/PatternAnalysis-2025/blob/6e6ccc958ac979306789cbbbb0540124ac547956/recognition/convnext_s4784847/README%20resources/training_metrics%20.png)
 
 - Validation accuracy stabilized around 86%.
 - F1-score plateaued near 0.86 by epoch 62.
@@ -452,10 +452,12 @@ The following sample predictions were visualised using `predict.py`:
 #### Single Image Predictions
 
 - **AD Single Prediction:**
-![AD Prediction](README%20resources/single_ad.png)
+
+    ![AD Prediction](README%20resources/single_ad.png)
 
 - **NC Single Prediction:**
-![NC Prediction](README%20resources/single_nc.png)
+
+    ![NC Prediction](README%20resources/single_nc.png)
 
 #### Balanced Batch Predictions
 
