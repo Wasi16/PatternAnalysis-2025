@@ -5,40 +5,35 @@
 
 ## Overview
 
-This repository implements a ConvNeXt-Small model for classifying Alzheimer's Disease (AD) vs. Cognitively Normal (NC) patients using MRI scans from the ADNI dataset. Built for COMP3710 Pattern Recognition project 8, this implementation features patient-level data splitting to prevent leakage, robust data augmentation, class balancing, and multi-scan prediction aggregation(i removed multiscan i think ). The project achieves [accuracy]% test accuracy, meeting the required 0.8 threshold, with full experiment tracking via Weights & Biases.
+This repository implements a ConvNeXt-Small model for classifying Alzheimer's Disease (AD) vs. Cognitively Normal (NC) patients using MRI scans from the ADNI dataset. Built for COMP3710 Pattern Recognition project 8, this implementation features patient-level data splitting to prevent leakage, robust data augmentation, class balancing, and multi scan prediction aggregation. The project achieves 75% test accuracy, below the required 0.8 threshold, with full experiment tracking via Weights & Biases.
 
 ## Table of Contents
 
-ConvNeXt
-Chosen Problem
-Model
-Loading data
-Training
-loss function
-optimiser
+ConvNeXt Overview \
+Chosen Problem \
+Model Architecture \
+Replication of results \
+ADNI Dataset \
+Training - Loss function - Optimisation
 Testing
-Result
+Results
 Discussion
-Conclution
-References
-Dependencies
 Improvements
+References
 
 ---
 
 ## ConvNeXt Overview
 
-ConvNeXt is a modern interpretation of convolutional newural networks(ConvNets), often refered to as a "ConvNet for the 2020s". It was introduced by Liu et al.(2022) as a way to bring traditional ConvNets up to the same level of performance as Vision Transformers, while preserving the efficieny and simplicity of convolutional models.
+ConvNeXt is a modern interpretation of convolutional neural networks(ConvNets), often refered to as a "ConvNet for the 2020s". It was introduced by Liu et al.(2022) as a way to bring traditional ConvNets up to the same level of performance as Vision Transformers, while preserving the efficieny and simplicity of convolutional models.
 
-The model combines design concepts from ResNet and Vision Transformers, taking the best from both. From ResNet, ConvNeXt keeps he general stage based architecture and residual connections. From Vission Transformers, it adopts concepts such as patchify stem, large receptive fields, layer normalisationa dn GELU activations.
-
-The authors systematically modernized the standard ResNet architecture through a series of design decisions, each backed by empirical evaluation. They began with a ResNet-50 baseline and progressively incorporated transformer inspired modifications, including adjusting the stage compute ratio, using depthwise convolutions, increasing kernel sizes to 7×7, replacing ReLU with GELU, and substituting Batch Normalization with Layer Normalization. (shorten this bit )
+The model combines design concepts from ResNet and Vision Transformers, taking the best from both. From ResNet, ConvNeXt keeps the general stage based architecture and residual connections. From Vision Transformers, it adopts concepts such as patchify stem, large receptive fields, layer normalisationa and GELU activations.
 
 The major architectureal updates for ConvNext include:
 
-- **Patchify Stem:** Replacing the traditional ResNet stem with a 4×4 convolution (stride 4), similar to how Vision Transformers create patch tokens
+- **Patchify Stem:** Replacing the traditional ResNet stem with a 4×4 convolution (stride 4), similar to how Vision Transformers patchify
 - **Large Depthwise Convolutions:** Using 7×7 depthwise convolutions inside each block to capture a larger spatial context
-- **Inverted Bottleneck Structure:** Expanding and projecting channels using an inverted bottleneck (narrow → wide → narrow)
+- **Inverted Bottleneck Structure:** Expanding and projecting channels using an inverted bottleneck
 - **Modern Normalization and Activation:** Switching from BatchNorm + ReLU to LayerNorm + GELU for smoother and more stable learning
 - **Simplified Design:** Four clear stages with downsampling between each one, creating a hierarchical feature representation
   .
@@ -65,157 +60,423 @@ The focus of this project is on the classification of Alzheimer’s disease usin
 
 ## Project Structure
 
-The implementation is structured into four main files for clarity and maintainability:
+The implementation is structured into five main files for clarity and maintainability:
 
 - **dataset.py:** Handles ADNI data loading, augmentation, and patient-level splitting.
 - **modules.py:** Defines the ConvNeXt-Small model with ConvNeXtBlock and DownsampleLayer.
 - **train.py:** Contains the training, validation, and testing loops with W&B logging.
 - **utils.py:** Provides data normalization utilities (mean and standard deviation computation).
-- **predict.py:** .
+- **predict.py:** # Inference and visualization.
 
 ---
 
-## Model Architecture
+# Model Architecture
 
 The model used in this project is **ConvNeXt-Small**, a modernized convolutional neural network designed to combine the strengths of classic ConvNets like ResNet with concepts from Vision Transformers.
+It contains four hierarchical stages with progressively increasing channel depth and decreasing spatial resolution.
 
-ConvNeXt-Small consists of four hierarchical stages with progressively increasing channel depth and decreasing spatial resolution:
+### Architecture Overview
+
+ConvNeXt-Small consists of 36 total convolutional blocks organized across four stages:
 
 **Stage Configuration:**
 
-- **Stage 1:** 3 ConvNeXt blocks, 96 channels
-- **Stage 2:** 3 ConvNeXt blocks, 192 channels
-- **Stage 3:** 27 ConvNeXt blocks, 384 channels
-- **Stage 4:** 3 ConvNeXt blocks, 768 channels
+- **Stage 1:** 3 ConvNeXt blocks, 96 channels, spatial size: 64×64
+- **Stage 2:** 3 ConvNeXt blocks, 192 channels, spatial size: 32×32
+- **Stage 3:** 27 ConvNeXt blocks, 384 channels, spatial size: 16×16
+- **Stage 4:** 3 ConvNeXt blocks, 768 channels, spatial size: 8×8
 
-![ConvNeXt Block](recognition\convnext_s4784847\README resources\image.png)
-
-**Total Parameters:** ~50M parameters (trainable)
+```
+Input [1×256×256]
+    ↓
+┌─────────────────────────┐
+│  Patchify Stem (4×4)    │  → [96×64×64]
+└─────────────────────────┘
+    ↓
+┌─────────────────────────┐
+│  Stage 1 (3 blocks)     │  → [96×64×64]
+│  ├─ ConvNeXt Block      │
+│  ├─ ConvNeXt Block      │
+│  └─ ConvNeXt Block      │
+└─────────────────────────┘
+    ↓ [Downsample 2×2]
+┌─────────────────────────┐
+│  Stage 2 (3 blocks)     │  → [192×32×32]
+└─────────────────────────┘
+    ↓ [Downsample 2×2]
+┌─────────────────────────┐
+│  Stage 3 (27 blocks)    │  → [384×16×16]  ← Deepest stage
+└─────────────────────────┘
+    ↓ [Downsample 2×2]
+┌─────────────────────────┐
+│  Stage 4 (3 blocks)     │  → [768×8×8]
+└─────────────────────────┘
+    ↓ [Global Avg Pool]
+┌─────────────────────────┐
+│  Classification Head    │
+│  ├─ LayerNorm           │
+│  ├─ Dropout (0.3)       │
+│  └─ Linear(768→2)       │
+└─────────────────────────┘
+    ↓
+Output [2] (AD, NC logits)
+```
 
 ### Key Components
 
 #### 1. Patchify Stem
+
+The patchify stem serves as the network's input embedding layer, converting raw MRI images into a feature rich representation. Rather than processing pixels individually, it divides the 256×256 input image into non overlapping 4×4 patches and projects each patch into a 96-dimensional feature vector. This aggressive spatial downsampling (16× reduction) is inspired by Vision Transformers and enables the network to focus on meaningful image structures rather than low-level pixel details, while simultaneously reducing computational cost for subsequent layers.
 
 ```python
 nn.Conv2d(in_channels=1, out_channels=96, kernel_size=4, stride=4)
 nn.LayerNorm(96)
 ```
 
-Converts input (256×256) into non-overlapping 4×4 patches, reducing spatial dimensions to 64×64.
-
 #### 2. ConvNeXt Block
+
+The ConvNeXt block is the main building unit that processes features at each stage of the network. With an inverted bottleneck design where features are first processed through a large 7×7 depthwise convolution to capture spatial context, then expanded to 4× the channel dimensions for rich feature learning, and finally projected back to the original size through a residual connection. This design allows the network to learn both local texture patterns and broader spatial relationships while maintaining computational efficiency.
 
 Each block contains:
 
-- **Depthwise Convolution (7×7):** Captures large spatial context
-- **Layer Normalization:** Stabilizes training
-- **Pointwise Expansion (1×1):** Expands channels by 4×
-- **GELU Activation:** Smooth non-linearity
-- **Pointwise Projection (1×1):** Projects back to original dimensions
-- **Residual Connection:** Enables gradient flow
+- **Depthwise Convolution (7×7):** Captures large spatial context with fewer parameters than standard convolution
+- **Layer Normalization:** Stabilizes training and normalizes features per channel
+- **Pointwise Expansion (1×1 Linear):** Expands channels by 4× for increased capacity
+- **GELU Activation:** Smooth, non saturating activation function for better gradient flow
+- **Pointwise Projection (1×1 Linear):** Projects back to original dimensions
+- **Residual Connection:** Enables gradient flow and facilitates training of deep networks
+
+![ConvNeXt Block](recognition\convnext_s4784847\README resources\image.png)
 
 #### 3. Downsampling Layer
 
-Between stages, a 2×2 convolution with stride 2 halves spatial dimensions while doubling channels.
+Downsampling layers connect consecutive stages using 2×2 convolutions with stride 2 to halve spatial resolution while doubling channel depth. This builds a hierarchical feature pyramid where early layers capture fine local brain details, while later layers extract broader structural patterns, mirroring ResNet’s multi-scale design but within ConvNeXt’s modern framework.
 
 #### 4. Classification Head
 
-- Global Average Pooling over spatial dimensions
-- Layer Normalization
-- Linear layer mapping 768 → 2 classes (AD, NC)
+After four stages extract hierarchical features (768 channels, 8×8 spatial size), global average pooling condenses them into a single 768-dimensional vector representing the whole brain. This vector passes through LayerNorm for stability, 30% dropout for regularization, and a final linear layer that outputs two logits (AD vs. NC), converted to probabilities via softmax during inference.
 
 ### Adaptations for Medical Imaging
 
 While ConvNeXt was originally designed for RGB images, I made several modifications to make it suitable for grayscale MRI:
 
-1. **Single-channel input:** Modified stem to accept 1-channel input (vs. 3-channel RGB)
-2. **Dropout regularization:** Added 30% dropout before classification to prevent overfitting on limited medical data
-3. **Grayscale normalization:** Applied channel-specific mean/std from ADNI training set
-4. **Large receptive fields:** 7×7 convolutions particularly beneficial for capturing distributed brain atrophy patterns
+1. **Single-channel input:** Modified stem to accept 1-channel input.
+2. **Dropout regularization:** Added 30% dropout before classification to prevent overfitting on limited medical data.
+3. **Grayscale normalization:** Applied channel specific mean/std from ADNI training set.
+
 ---
 
-## Data loading
+## Replication of results
 
-The dataset is saved in the files in the following format
-.
-├── AD_NC  
- ├── Test  
- ├── AD  
- ├── NC  
- ├── Train
-├── AD  
- ├── NC
+To reproduce the reported results, follow the environment setup and execution steps below. All experiments were conducted using PyTorch 2.1, Python 3.9, and an NVIDIA A100 GPU from Rangpur and google colab.
 
-### Data preprocessing and Normalisation
+### Dependancies
 
-### Pateient level data handling
-
-### Data Augmentation
-
-## Training the model
-
-## Testing
-
-## Results
-
-# Performance Evaluation Metrics
-
-## Discussion
-
-## Improvements
-
-## Conclusion
-
-## How to run the system
-
-` pip install torch torchvision scikit-learn matplotlib tqdm wandb`
-
-**HPC (Rangpur) Training**
-
-Create a SLURM script (`run_train.sh`):
-
-```bash
-#!/bin/bash
-#SBATCH --job-name=convnext_adni
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:A100:1
-#SBATCH --time=24:00:00
-#SBATCH --partition=gpu
-
-module load cuda/11.8
-module load python/3.9
-
-source /path/to/venv/bin/activate
-
-python train.py
-```
-
-Submit job:
-
-```bash
-sbatch run_train.sh
-```
-
-**Google Colab**
-
-Upload all files and adjust paths:
-
-```python
-ADNI_DATA_PATH = "/content/drive/MyDrive/ADNI/AD_NC"
-```
-
-Enable GPU runtime: Runtime → Change runtime type → A100 GPU
-
-## Dependancies
-
-python
-PyTorch
+python = 3.9
+PyTorch = 2.1
 TorchVision
 scikit-learn
 Matplotlib
 tqdm
 wandb
 
+` pip install torch torchvision scikit-learn matplotlib tqdm wandb`
+
+## Running on Rangpur
+
+1. Create a SLURM script:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=convnext_run
+#SBATCH --gres=gpu:1
+#SBATCH --partition=a100
+#SBATCH --time=20:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH -o convnext_%j.out
+#SBATCH -e convnext_%j.err
+
+source ~/.bashrc
+conda activate torch
+
+pip install --quiet --upgrade tqdm matplotlib scikit-learn wandb timm
+
+wandb login API_KEY
+
+python train.py
+```
+
+2. Submit job:
+
+```bash
+sbatch script_name
+```
+
+## Running on Google Colab
+
+1. Upload all files and adjust paths:
+
+2. Place your ADNI dataset inside google drive and update the path at the top of `dataset.py`
+
+   ```python
+   ADNI_DATA_PATH = "/content/drive/MyDrive/ADNI/AD_NC"
+   ```
+
+3. Enable GPU runtime: Runtime → Change runtime type → A100 GPU
+
+4. Run Training script (`train.py`) and Predict script (`predict.py`)
+
+---
+
+## Data loading
+
+The ADNI (Alzheimer’s Disease Neuroimaging Initiative) dataset was used for this project, containing 2D MRI brain slices from two classes: Alzheimer’s Disease (AD) and Cognitively Normal (NC).
+
+### Dataset Structure
+
+`AD_NC/
+ ├── train/
+ │   ├── AD/
+ │   └── NC/
+ ├── test/
+ │   ├── AD/
+ │   └── NC/`
+Each image file is named with a patient ID prefix such as 388206_78.jpeg, where 388206 identifies the patient and \_78 refers to the slice index.
+
+### Data preprocessing and Normalisation
+
+Preprocessing and normalization were handled in `dataset.py`.
+All MRI images were:
+
+- Resized to 256×256
+
+- Converted to grayscale (1-channel)
+
+- Normalized using the dataset’s computed statistics:
+
+* Mean: 0.1155
+
+* Standard deviation: 0.2212
+
+These values were calculated from the training set using `mean_std_calc()` in `utils.py`.
+Normalization ensures intensity consistency across scans, which is critical since MRI brightness varies between sessions and scanners.
+
+### Pateient level data handling
+
+Initially, the dataset was loaded per image, which led to **data leakage**. Some slices from the same patient appeared in both training and validation sets, increasing accuracy.
+To fix this, patient aware splitting was implemented.
+
+Key Improvements included -:
+
+1. Patient ID extraction:
+   Each image filename is parsed to obtain the patient ID (e.g., '388206_78.jpeg' → 388206).
+
+2. Patient-based splitting:
+   Using `train_test_split()` on unique patient IDs ensures that all scans from a single patient appear only in one split.
+
+3. Dataset classes:
+
+- ADNIDataset – image level dataset (used for fast experiments)
+
+- ADNIPatientDataset – patient grouped dataset supporting:
+
+        'single' mode: randomly select one scan per patient per epoch
+
+        'all' mode: return all scans for patient-level aggregation (used in testing)
+
+This change was crucial to achieve stable validation performance.
+
+### Data Augmentation
+
+To improve generalization and prevent overfitting, several augmentations were applied using `torchvision.transforms`.
+
+1. Training Augmentations
+
+`            transforms.Resize(IMAGE_SIZE),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(15),
+            transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std),
+            transforms.RandomErasing(p=0.3, scale=(0.02, 0.1))` 2. Validation / Test Augmentations
+
+`            transforms.Resize(IMAGE_SIZE),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean,std)`
+
+## Training the model
+
+The model was trained to classify MRI slices from the ADNI dataset into Alzheimer’s Disease (AD) and Cognitively Normal (NC). Training emphasized reproducibility, stability, and generalization across patient scans.
+
+### Final Parameters
+
+| Parameter         | Value                                                              |
+| ----------------- | ------------------------------------------------------------------ |
+| Model             | ConvNeXt-Small                                                     |
+| Optimizer         | **AdamW**                                                          |
+| Learning Rate     | 1e-4                                                               |
+| Weight Decay      | 0.05                                                               |
+| Batch Size        | 28                                                                 |
+| Epochs            | 65                                                                 |
+| LR Scheduler      | **ReduceLROnPlateau (mode='max', patience=6)**                     |
+| Loss Function     | CrossEntropyLoss (label smoothing=0.1, class weights=[1.65, 1.35]) |
+| Regularization    | Dropout = 0.3, Random Erasing = 0.3                                |
+| GPU               | NVIDIA A100                                                        |
+| Training Duration | ~2 hours                                                           |
+
+Training and validation were logged using **Weights & Biases (W&B)** for real time experiment tracking and performance comparison across different runs.
+
+### Optimisation
+
+Early experiments used various learning rate schedulers (`StepLR`, `CosineAnnealingLR`, `OneCycleLR`), but `ReduceLROnPlateau` provided the most consistent improvements.Mixed precision training using `torch.amp.autocast` was used to stabilize and speed up convergence.
+
+Key training features:
+
+- Label smoothing (0.1): Prevents overconfidence and improves calibration.
+- Class weights: Counteracts dataset imbalance (AD < NC).
+- Model checkpointing: Saves the best performing model based on validation F1.
+- Full schedule completion: Early stopping disabled to allow full 65 epoch training, but best path was used from epoch 62.
+
+### Loss Function
+
+A weighted Cross-Entropy Loss was used to handle class imbalance between AD and NC patients. This ensured the model did not bias heavily toward the majority (NC) class.
+
+`criterion = nn.CrossEntropyLoss(
+    label_smoothing=0.1,
+    weight=torch.tensor([1.65, 1.35], dtype=torch.float32).to(DEVICE)
+)`
+
+### Training and Validation Performance
+
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+
+- Validation accuracy stabilized around 86%.
+
+- F1-score plateaued near 0.86 by epoch 62.
+
+- Loss curves showed smooth convergence with minimal divergence between train and validation, indicating reduced overfitting.
+
+### Weights and Biases Tracking
+
+The W&B dashboard was used to track multiple training runs and visualize learning stability across configurations.
+
+**Validation F1 Comparison:**
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+
+**Validation Accuracy Comparison:**
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+
+**Training Accuracy Progression:**
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+
+These results confirm that the final run `convnext_small_run_final` consistently achieved the best validation F1 and accuracy, showing stable convergence compared to earlier unstable runs.
+
+## Testing
+Testing was performed using both single-scan evaluation and multi-scan (patient-level) aggregation to measure model robustness across multiple MRI slices from the same patient.
+
+Two test loaders were defined in dataset.py:
+
+- Single-Scan Loader: Evaluates each MRI slice independently.
+
+- Aggregated Loader: Combines predictions from all slices of a patient by averaging class probabilities, providing a more reliable patient-level diagnosis.
+
+During inference, the model predicted the likelihood of each class (AD or NC) using a softmax output. All predictions were generated using the best checkpoint (convnext_small_best.pth) from epoch 62, selected based on highest validation F1 score (0.868).
+
+## Results
+
+### Final Evaluation Matrics
+| **Metric** | **Validation** | **Test (Single)** | **Test (Aggregated)** |
+| ---------- | -------------- | ----------------- | --------------------- |
+| Accuracy   | 86.81%         | 73.56%            | **75.11%**            |
+| F1-score   | **0.868**      | 0.729             | **0.743**             |
+
+### Classification Report (Aggregated)
+| Class                | Precision | Recall | F1-score | Support |
+| -------------------- | --------- | ------ | -------- | ------- |
+| AD                   | 0.88      | 0.58   | 0.70     | 223     |
+| NC                   | 0.69      | 0.92   | 0.79     | 227     |
+| **Overall Accuracy** |           |        | **0.75** | 450     |
+| **Macro Avg**        | 0.78      | 0.75   | 0.74     |         |
+| **Weighted Avg**     | 0.78      | 0.75   | 0.74     |         |
+
+### Confusion Matrx (Aggregated)
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+- The model correctly classifies 92% of NC cases and 58% of AD cases.
+- The imbalance reflects the inherent difficulty of distinguishing early stage AD patterns.
+
+### Visualisation of Test Accuracies and F1 scores 
+
+The following comparisons are from Weights and Biases 
+
+** Single Scan Accuracy**
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+** Aggregated Accuracy **
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+** Single Scan F1** 
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+** Aggregated F1** 
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+
+### Interpretation
+- The NC class achieved higher recall, indicating the model effectively identifies cognitively normal subjects.
+- The AD class had lower recall (0.58), highlighting challenges in differentiating mild AD cases.
+- Aggregated predictions improved both accuracy and F1 by reducing false negatives on AD.
+- Overall, the ConvNeXt-Small architecture captured robust spatial biomarkers of AD while maintaining good generalization across unseen patients.
+
+### Sample Predictions 
+
+The following sample predictions were visualised using `predict.py`
+
+#### Single Image Predictions 
+
+![AD prediction](recognition\convnext_s4784847\README resources\single_ad.png)
+ 
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+
+#### Balanced Batch Predictions
+Predictions shown in green (correct) and red (incorrect).
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+![NC prediction](recognition\convnext_s4784847\README resources\single_nc.png)
+
+## Discussion
+The ConvNeXt-Small model demonstrated consistent convergence and strong validation performance, achieving 86.8 % validation accuracy (F1 = 0.868) and 75.1 % aggregated test accuracy (F1 = 0.743). These results confirm that the network effectively learned meaningful structural patterns from brain MRIs, particularly for differentiating cognitively normal controls (NC).
+
+However, class imbalance and subtle anatomical differences in Alzheimer’s patients at early stages limited recall for the AD class (0.58). Despite this, multi scan aggregation improved both accuracy and F1 by over 1.5 %, showing that averaging slice-level predictions helps mitigate noise and bias.
+
+**Key Observations**
+
+- Patient-aware splitting eliminated over optimistic validation metrics caused by leakage and produced more realistic results.
+- Weighted loss + label smoothing helped stabilize training and improved minority class performance.
+- ReduceLROnPlateau dynamically adapted the learning rate, preventing premature convergence observed with StepLR and OneCycleLR.
+- Dropout regularization and gentle augmentations controlled overfitting while preserving fine structural details in MRI slices.
+- W&B experiment tracking confirmed that the final configuration achieved the most stable learning curve and generalization trend.
+
+Overall, the ConvNeXt-Small backbone proved well suited for 2D medical imaging tasks, offering a balance between capacity and efficiency. The remaining performance gap toward the 80 % test accuracy target can be reached with more data and training improvements.
+
+## Improvements
+
+To further enhance model performance and approach the 80 % test accuracy target, future improvments should be focusing on extending the 2D ConvNeXt-Small to a 3D variant or incorporating adjacent slices to better capture volumetric brain context. Exploring advanced loss functions such as focal or class-balanced loss can address residual imbalance and improve AD recall. Additionally, MRI-specific augmentations (via TorchIO), pretraining on large-scale medical datasets, and hyperparameter optimization using automated sweeps (e.g., W&B or Optuna) could further refine generalization. Lastly, smarter patient-level aggregation methods—like attention-based weighting instead of simple averaging—may boost diagnostic reliability across variable scan qualities.
+
+## Conclusion
+This project successfully implemented and optimized a ConvNeXt-Small architecture for Alzheimer’s disease classification on the ADNI MRI dataset. Through patient level data handling, balanced training, and careful tuning of loss and learning rate schedules, the model achieved 86.8 % validation accuracy and 75.1 % test accuracy (F1 = 0.743). 
+
 ## References
+1. Liu, Z., Mao, H., Wu, C., Feichtenhofer, C., Darrell, T., & Xie, S. (2022).
+A ConvNet for the 2020s (ConvNeXt).
+arXiv preprint arXiv:2201.03545.
+https://arxiv.org/abs/2201.03545
+
+2. Facebook Research. (2022).
+ConvNeXt Model Implementation (GitHub Repository).
+https://github.com/facebookresearch/ConvNeXt/blob/main/models/convnext.py
+
+3. GeeksforGeeks. (2023).
+Data Preprocessing in PyTorch – Deep Learning Tutorial.
+https://www.geeksforgeeks.org/deep-learning/data-preprocessing-in-pytorch/
+
+4. freeCodeCamp. (2022).
+How to Write Better Git Commit Messages.
+https://www.freecodecamp.org/news/how-to-write-better-git-commit-messages/
