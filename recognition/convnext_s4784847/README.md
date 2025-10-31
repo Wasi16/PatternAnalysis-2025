@@ -417,7 +417,7 @@ During inference, the model predicted the likelihood of each class (AD or NC) us
 
 ### Confusion Matrix (Aggregated)
 
-![Confusion Matrix](README%20resources/confusion_matrix.png)
+![Confusion Matrix](README%20resources/test_confusion_agg.png)
 
 - The model correctly classifies 92% of NC cases and 58% of AD cases.
 - The imbalance reflects the inherent difficulty of distinguishing early stage AD patterns.
@@ -451,10 +451,10 @@ The following sample predictions were visualised using `predict.py`:
 
 #### Single Image Predictions
 
-**AD Single Prediction:**
+- **AD Single Prediction:**
 ![AD Prediction](README%20resources/single_ad.png)
 
-**NC Single Prediction:**
+- **NC Single Prediction:**
 ![NC Prediction](README%20resources/single_nc.png)
 
 #### Balanced Batch Predictions
