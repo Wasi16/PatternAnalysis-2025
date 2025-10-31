@@ -2,14 +2,26 @@
 modules.py
 ---------
 
-required layers , Convext blovk. downsampler , then convnect tieny
-
+Contains all required network components for the ConvNeXt-S architecture:
+- ConvNeXtBlock: Core building block with depthwise and pointwise convolutions
+- DownsampleLayer: Reduces spatial dimensions between stages
+- ConvNeXt_S: Complete ConvNeXt-S model for binary Alzheimer’s classification
 """
 import torch
 import torch.nn as nn 
 import torch.nn.functional as F
 
 class ConvNeXtBlock(nn.Module):
+    """
+    Core ConvNeXt block.
+
+    Consists of:
+    - Depthwise convolution (spatial mixing per channel)
+    - Layer normalization
+    - Two pointwise (1x1) linear layers for expansion and projection
+    - GELU activation
+    - Residual connection
+    """
 
     def __init__(self, dimentions):
         super().__init__()
@@ -48,7 +60,10 @@ class ConvNeXtBlock(nn.Module):
 
 class DownsampleLayer(nn.Module):
     """
-    
+    Reduces the spatial resolution between ConvNeXt stages.
+
+    - 2x2 Conv with stride 2 halves H and W
+    - LayerNorm stabilizes features after downsampling
     """
     def __init__(self, input, output):
         super().__init__()
@@ -70,7 +85,13 @@ class DownsampleLayer(nn.Module):
     
 class ConvNeXt_S(nn.Module):
     """
-    ConvNeXt Small implementation 
+    ConvNeXt-S (Small) architecture for image classification.
+
+    Adapted from:
+    > Liu et al., “A ConvNet for the 2020s”, Facebook AI Research, 2022.
+
+    This model applies hierarchical feature extraction with ConvNeXt blocks,
+    downsampling layers, and a classification head for Alzheimer’s detection.
     """
     def __init__(self, in_ch=1, num_classes=2, drop_rate=0.3):
         super().__init__()
